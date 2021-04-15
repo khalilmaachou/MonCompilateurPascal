@@ -47,11 +47,13 @@ void Error(string s){
 	cerr<< s << endl;
 	exit(-1);
 }
+
+// Program := [DeclarationPart] StatementPart
 // DeclarationPart := "[" Letter {"," Letter} "]"
-// ArithmeticExpression := Term {AdditiveOperator Term}
-// Term := Digit | "(" ArithmeticExpression ")"
-// AdditiveOperator := "+" | "-" |"*"
-// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+// StatementPart := Statement {";" Statement} "."
+// Statement := AssignementStatement
+// AssignementStatement := Letter "=" Expression
+
 void Vergule(void);
 void Letter(void);
 void DeclarationPart(void){
@@ -75,25 +77,17 @@ void Vergule(void){
 }
 void Letter(void){
 	
-	if(current =='a'||current =='b'||current =='c'){
+	if(current >='a' || current <='z'){
 		cout <<"\t"<<current<<"      .quad 0"<<endl;
 		ReadChar();
 	}else{
 		Error("lettre attendu");		   // Letter expected
 	}
 }
-// Program := [DeclarationPart] StatementPart
-// DeclarationPart := "[" Letter {"," Letter} "]"
-// StatementPart := Statement {";" Statement} "."
-// Statement := AssignementStatement
-// AssignementStatement := Letter "=" Expression
 
 
-// Expression := SimpleExpression [RelationalOperator SimpleExpression]
-// SimpleExpression := Term {AdditiveOperator Term}
-// Term := Factor {MultiplicativeOperator Factor}
-// Factor := Number | Letter | "(" Expression ")"| "!" Factor
-// Number := Digit{Digit}
+
+
 
 // AdditiveOperator := "+" | "-" | "||"
 // MultiplicativeOperator := "*" | "/" | "%" | "&&"
@@ -128,28 +122,29 @@ void AssignementStatement(void) {
 		Error("= attendu");		   // = expected
 	}
 }
+// Expression := SimpleExpression [RelationalOperator SimpleExpression]
+// SimpleExpression := Term {AdditiveOperator Term}
+// Term := Factor {MultiplicativeOperator Factor}
+// Factor := Number | Letter | "(" Expression ")"| "!" Factor
+// Number := Digit{Digit}
+
+// AdditiveOperator := "+" | "-" | "||"
+// MultiplicativeOperator := "*" | "/" | "%" | "&&"
+// RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
+// Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+// Letter := "a"|...|"z"
 
 void Expression(void){
    SimpleExpression();
-}
-void SimpleExpression(void){
-	Term();
-	if(current=='+'||current=='-'||current=='|')
-	   AdditiveOperator();
-	   Term();
-}
-
-void AdditiveOperator(void){
-	if(current=='+'||current=='-'||current=='|')
-	   char v =current;
-		ReadChar();
-		if(v=='|' && current=='|'){
-			ReadChar();
-		}else{
-			Error("| attendu");
-		}
-	else
-		Error("Opérateur additif attendu");	   // Additive operator expected
+   if(current == '['){
+	   RelationalOperator();
+	   SimpleExpression();
+	   if(current != ']'){
+		   Error("] attendu")
+	   }else{
+		   ReadChar();
+	   }
+   }else
 }
 
 bool chiffre(char c){
@@ -173,30 +168,24 @@ void Digit(void){
 	}
 }
 
-void ArithmeticExpression(void);			// Called by Term() and calls Term()
-
-void Term(void){
-        if(current=='('){
-                ReadChar();
-                ArithmeticExpression();
-                if(current!=')')
-                        Error("')' était attendu");             // ")" expected
-                else
-                        ReadChar();
-        }
-        else
-                if (current>='0' && current <='9')
-                        Digit();
-                else
-                        Error("'(' ou chiffre attendu");
+void AdditiveOperator(void){
+	if(current=='+'||current=='-'||current=='|')
+	   char v =current;
+		ReadChar();
+		if(v=='|' && current=='|'){
+			ReadChar();
+		}else{
+			Error("| attendu");
+		}
+	else
+		Error("Opérateur additif attendu");	   // Additive operator expected
 }
 
-
-
-void ArithmeticExpression(void){
-        char adop;
-        Term();
-        while(current=='+'||current=='-'){
+void term(void);
+void SimpleExpression(void){
+	char adop;
+    Term();
+    while(current=='+'||current=='-'){
                 adop=current;           // Save operator in local variable
                 AdditiveOperator();
                 Term();
@@ -207,9 +196,65 @@ void ArithmeticExpression(void){
                 else
                         cout << "\tsubq %rbx, %rax"<<endl;      // substract both operands
                 cout << "\tpush %rax"<<endl;                    // store result
-        }
+    }
 
 }
+
+void Factor(void);
+void Term(void){
+    char mulop;
+    Factor();
+
+    while(current=='*'||current=='/'||current=='%'||current=='&'){
+                mulop=current;           // Save operator in local variable
+                MultiplicativeOperator();
+                Factor();
+                cout << "\tpop %rbx"<<endl;     // get first operand
+                cout << "\tpop %rax"<<endl;     // get second operand
+                if(adop=='*')
+                        cout << "\tmulq %rbx"<<endl;      // mul both operands
+                else{
+					if(mulop=='/' || mulop=='%')
+                        cout << "\tdivq %rbx"<<endl; 
+				}
+                        cout << "\tand %rbx, %rax"<<endl;      // and both operands
+                cout << "\tpush %rax"<<endl;                    // store result
+    }
+}
+
+// Factor := Number | Letter | "(" Expression ")"| "!" Factor
+void Factor(void){
+	if((current >='0'||current <='9')){ //si current est un nombre
+		Digit();
+	}else{
+		if((current >'a'||current <'z')){ //si current est une lettre
+			Letter();
+		}else{
+			if(current=='('){ //cas d'expression
+				Expression();
+				if(current!=')'){
+					Error(") attendu");
+				}
+				ReadChar();
+				if(current=='!'){ // cas : "!" Factor
+					Factor();
+				}
+			}
+		}
+	}
+
+
+}
+
+
+
+
+
+
+
+
+
+
 
 
 int main(void){	// First version : Source code on standard input and assembly code on standard output
