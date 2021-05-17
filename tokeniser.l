@@ -29,15 +29,14 @@ addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
-loop    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE")
-loopfollowing  ("DO"|"THEN"|"TO")
-
+loop    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN")
 %%
 
 {addop}		return ADDOP;
 {mulop}		return MULOP;
 {relop}		return RELOP;
 {number}	return NUMBER;
+{loop}     return LOOP;
 {id}		return ID;
 {stringconst}	return STRINGCONST;
 "["		return RBRACKET;
@@ -63,9 +62,7 @@ loopfollowing  ("DO"|"THEN"|"TO")
 		}
 	};
 
-{unknown}	return UNKNOWN;
-"!"     return LOOP;
-"DO"    return LOOPFOLLOWING;
 
+{unknown}    return UNKNOWN;
 %%
 

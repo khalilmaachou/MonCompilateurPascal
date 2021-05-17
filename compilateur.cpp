@@ -31,6 +31,7 @@ using namespace std;
 enum OPREL {EQU, DIFF, INF, SUP, INFE, SUPE, WTFR};
 enum OPADD {ADD, SUB, OR, WTFA};
 enum OPMUL {MUL, DIV, MOD, AND ,WTFM};
+enum TYPE {UNSIGNED_INT,BOOLEAN};
 
 TOKEN current;				// Current token
 
@@ -74,22 +75,26 @@ void Error(string s){
 // Letter := "a"|...|"z"
 	
 		
-void Identifier(void){
+TYPE Identifier(void){
 	cout << "\tpush "<<lexer->YYText()<<endl;
 	current=(TOKEN) lexer->yylex();
+	return UNSIGNED_INT;
 }
 
-void Number(void){
+TYPE Number(void){
 	cout <<"\tpush $"<<atoi(lexer->YYText())<<endl;
 	current=(TOKEN) lexer->yylex();
+	return UNSIGNED_INT;
 }
 
-void Expression(void);			// Called by Term() and calls Term()
+TYPE Expression(void);			// Called by Term() and calls Term()
 
-void Factor(void){
+TYPE Factor(void){
+	TYPE val;
 	if(current==RPARENT){
 		current=(TOKEN) lexer->yylex();
-		Expression();
+		val = Expression();
+		
 		if(current!=LPARENT)
 			Error("')' était attendu");		// ")" expected
 		else
@@ -97,12 +102,13 @@ void Factor(void){
 	}
 	else 
 		if (current==NUMBER)
-			Number();
+			val = Number();
 	     	else
 				if(current==ID)
-					Identifier();
+					val = Identifier();
 				else
 					Error("'(' ou chiffre ou lettre attendue");
+	return val ;
 }
 
 // MultiplicativeOperator := "*" | "/" | "%" | "&&"
@@ -122,12 +128,19 @@ OPMUL MultiplicativeOperator(void){
 }
 
 // Term := Factor {MultiplicativeOperator Factor}
-void Term(void){
+TYPE Term(void){
 	OPMUL mulop;
-	Factor();
+	//stockage des types de factor
+	TYPE val1;
+	TYPE val2;
+	val1 = Factor();
 	while(current==MULOP){
 		mulop=MultiplicativeOperator();		// Save operator in local variable
-		Factor();
+		val2 = Factor();
+		if(val1 != val2) //test de corespendence
+		{
+			Error("expected same type of factor");
+		}
 		cout << "\tpop %rbx"<<endl;	// get first operand
 		cout << "\tpop %rax"<<endl;	// get second operand
 		switch(mulop){
@@ -153,6 +166,7 @@ void Term(void){
 				Error("opérateur multiplicatif attendu");
 		}
 	}
+	return val1;
 }
 
 // AdditiveOperator := "+" | "-" | "||"
@@ -170,12 +184,18 @@ OPADD AdditiveOperator(void){
 }
 
 // SimpleExpression := Term {AdditiveOperator Term}
-void SimpleExpression(void){
+TYPE SimpleExpression(void){
 	OPADD adop;
-	Term();
+	TYPE val1;
+	TYPE val2;
+	val1 = Term();
 	while(current==ADDOP){
 		adop=AdditiveOperator();		// Save operator in local variable
-		Term();
+		val2 = Term();
+		if(val1 != val2)
+		{
+			Error("expected same type of term");
+		}
 		cout << "\tpop %rbx"<<endl;	// get first operand
 		cout << "\tpop %rax"<<endl;	// get second operand
 		switch(adop){
@@ -192,8 +212,9 @@ void SimpleExpression(void){
 				Error("opérateur additif inconnu");
 		}
 		cout << "\tpush %rax"<<endl;			// store result
+		
 	}
-
+return val1;
 }
 
 // DeclarationPart := "[" Ident {"," Ident} "]"
@@ -243,12 +264,20 @@ OPREL RelationalOperator(void){
 }
 
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
-void Expression(void){
+TYPE Expression(void){
 	OPREL oprel;
-	SimpleExpression();
+	TYPE val1;
+	TYPE val2;
+	val1 = SimpleExpression();
 	if(current==RELOP){
 		oprel=RelationalOperator();
-		SimpleExpression();
+		val2 = SimpleExpression();
+		if(val1 != val2)
+		{
+			cout<<val1<<endl;
+			Error("expected same type");
+		}
+		val1 = BOOLEAN;
 		cout << "\tpop %rax"<<endl;
 		cout << "\tpop %rbx"<<endl;
 		cout << "\tcmpq %rax, %rbx"<<endl;
@@ -279,6 +308,7 @@ void Expression(void){
 		cout << "Vrai"<<TagNumber<<":\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<endl;	
 		cout << "Suite"<<TagNumber<<":"<<endl;
 	}
+	return val1;
 }
 
 // AssignementStatement := Identifier ":=" Expression
@@ -295,7 +325,10 @@ void AssignementStatement(void){
 	if(current!=ASSIGN)
 		Error("caractères ':=' attendus");
 	current=(TOKEN) lexer->yylex();
-	Expression();
+	TYPE val = Expression();
+	if (val != UNSIGNED_INT){
+		Error("Expected INTEGER");
+	}
 	cout << "\tpop "<<variable<<endl;
 }
 
@@ -330,53 +363,97 @@ void Statement(void){
 //IfStatement := "IF" Expression "THEN" Statement [ "ELSE" Statement ]
 void IfStatement(void){
 	current=(TOKEN) lexer->yylex();
-    Expression();
+	int number = TagNumber+1;
+	TYPE val1;
+	string nexttag;
+	cout << "IF"<<number<<":"<<endl;
+    nexttag = "FINSI";
+    val1 = Expression();
+	if(val1 != BOOLEAN){ //test si un boolean ou pas pour verifier la condition 
+        Error("Expected Boolean type expression");
+	}
 	if(strcmp(lexer->YYText(),"THEN")!=0){ //si mot clef 'THEN' n'existe pas
        Error("'THEN' attendus");
 	}else{
 		current=(TOKEN) lexer->yylex();
+		cout << "\tpop %rax"<<endl;
+		cout << "\tcmpq %rax,$0"<<endl;
+        cout << "\tje ELSE"<<number<<endl;
 		Statement();
+        cout << "ELSE"<<number<<":"<<endl;
 		if(strcmp(lexer->YYText(),"ELSE")==0){ //Si existe un block 'ELSE'
-		    current=(TOKEN) lexer->yylex();
+			current=(TOKEN) lexer->yylex();
 			Statement();
 		}
+		cout <<"FINSI"<<number<<":"<<endl;
 	}
 }
 //WhileStatement := "WHILE" Expression DO Statement
 void WhileStatement(void){
 	current=(TOKEN) lexer->yylex();
-	Expression();
-	if(current==LOOPFOLLOWING){
+	int number = TagNumber + 1;
+	cout << "WHILE"<<number<<":"<<endl;
+	TYPE val1;
+	val1 = Expression();
+	if(val1 != BOOLEAN){ //test si un boolean ou pas pour verifier la condition 
+        Error("Expected Boolean type expression");
+	}
+	cout << "\tpop %rax"<<endl;
+	cout << "\tcmpq %rax,$0"<<endl;
+	cout << "\tje ENDWHILE"<<number<<endl;
+	if(current==LOOP){
 	   if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
           Error("'DO' attendus");
 	   }else{
 		   current=(TOKEN) lexer->yylex();
 		   Statement();
+		   cout << "\tjmp WHILE"<<number<<endl;
+		   cout <<"ENDWHILE"<<number<<":"<<endl;
 	   }
 	}
 }
 //ForStatement := "FOR" AssignementStatement "To" Expression "DO" Statement
 void ForStatement(void){
     current=(TOKEN) lexer->yylex();
+	TagNumber++;
+	int number = TagNumber ;
+	string var = lexer->YYText();
 	AssignementStatement();
+	cout << "\tpush "<<var<<endl;
+	cout << "\tpop %rcx"<<endl;
+
 	if(strcmp(lexer->YYText(),"TO")!=0){ //si mot clef 'TO' n'existe pas
        Error("'TO' attendus");
 	}else{
 		current=(TOKEN) lexer->yylex();
-		cout<<"FOR : "<<endl; 
+		string borne = lexer->YYText();
+		TOKEN c = current;
+		cout <<"FOR"<<number<<":"<<endl;
+		if(c == NUMBER){
+            cout << "\tcmpq %rcx,$"<<borne<<endl;		
+		}else{
+            cout << "\tcmpq %rcx,"<<borne<<endl;
+		}
 		Expression();
+	    cout << "\tja ENDFOR"<<number<<endl;
 		if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
             Error("'DO' attendus");
 	    }else{
 		    current=(TOKEN) lexer->yylex();
+	        cout << "\tpush %rcx"<<endl; //stocké la valeur de rcx dans le compteur pour permet d'utiliser cx plusieur fois 
 		    Statement();
-			cout<<"\tjmp FOR "<<endl;
+			cout << "\tpop %rcx"<<endl;
+			cout << "\tincq	%rcx\t# ADD"<<endl;
+			cout<<"\tjmp FOR"<<number<<endl;
+			cout <<"ENDFOR"<<number<<":"<<endl;
     	}
 	}
 }
 //BlockStatement := "BEGIN" Statement { ";" Statement } "END"
 void BlockStatement(void){
     current=(TOKEN) lexer->yylex();
+	int number = TagNumber + 1;
+	cout <<"Begin"<<number<<":"<<endl;
 	Statement();
 	while(current==SEMICOLON){
        current=(TOKEN) lexer->yylex();
@@ -387,7 +464,7 @@ void BlockStatement(void){
 	}else{
 		current=(TOKEN) lexer->yylex();
 	}
-
+    cout <<"END"<<number<<":"<<endl;
 }
 
 // StatementPart := Statement {";" Statement} "."

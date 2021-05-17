@@ -1,4 +1,3 @@
 [a,b,c,z]
-z:=(8==3)||(4==2*2);
-b:=(5/65+2)<(7%5);
-WHILE z<b DO z=1+2.
+WHILE a+b DO 
+FOR a:=0 TO 2 DO a:=1.
