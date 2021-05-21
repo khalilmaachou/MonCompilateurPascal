@@ -223,6 +223,7 @@ void DeclarationPart(void){
 		Error("caractère '[' attendu");
 	cout << "\t.data"<<endl;
 	cout << "\t.align 8"<<endl;
+	cout << "FormatString1:    .string \"%llu\\n\"  # used by printf to display 64-bit unsigned integers"<<endl;
 	
 	current=(TOKEN) lexer->yylex();
 	if(current!=ID)
@@ -336,6 +337,7 @@ void IfStatement(void);
 void WhileStatement(void);
 void ForStatement(void);
 void BlockStatement(void);
+void Display(void);
 //Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
 void Statement(void){
 	if(current==LOOP){
@@ -351,7 +353,11 @@ void Statement(void){
 	                  if(strcmp(lexer->YYText(),"BEGIN")==0){ //si c'est un block "BLOCK"
                           BlockStatement();
 	                  }else{
-	                      Error("previous 'IF' OR 'BEGIN' attendus");
+	                      if(strcmp(lexer->YYText(),"DISPLAY")==0){ //si c'est un block "DISPLAY"
+                             Display();
+	                      }else{
+	                         Error("previous 'Boucle' or 'Display' attendus");
+	                      }
 	                  }
 	              }
 	        }
@@ -399,7 +405,7 @@ void WhileStatement(void){
         Error("Expected Boolean type expression");
 	}
 	cout << "\tpop %rax"<<endl;
-	cout << "\tcmpq %rax,$0"<<endl;
+	cout << "\tcmpq $0,%rax"<<endl;
 	cout << "\tje ENDWHILE"<<number<<endl;
 	if(current==LOOP){
 	   if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
@@ -419,25 +425,37 @@ void ForStatement(void){
 	int number = TagNumber ;
 	string var = lexer->YYText();
 	AssignementStatement();
-	if(strcmp(lexer->YYText(),"TO")!=0){ //si mot clef 'TO' n'existe pas
+	int typeDeBoucleFor = 0; //savoir si cest un "DOWN TO" ou c'est un "TO"
+	if(strcmp(lexer->YYText(),"TO")!=0 && strcmp(lexer->YYText(),"DOWN TO")!=0){ //si mot clef 'TO' et le mot clef 'DOWN TO' n'existe pas
        Error("'TO' attendus");
 	}else{
+		if(strcmp(lexer->YYText(),"DOWN TO") == 0){ //si c'est un "DOWN TO" ON CHANGE LA VALEUR DE LA VARIABLE
+		   typeDeBoucleFor = 1;
+		}
 		current=(TOKEN) lexer->yylex();
 		string borne = lexer->YYText();
 		TOKEN c = current;
 		Expression();
 		cout << "\tpop %rax"<<endl; //stocké l'expression dans rax
-	    cout <<"FOR"<<number<<":"<<endl;
+		cout << "\tincq %rsi"<<endl; //incrementer l'indice pour stocké la limite  de la boucle courante
+		cout << "\tmovq %rax,(%rsi)"<<endl;
+	    cout <<"FOR"<<number<<":"<<endl; //stocké la limite de la boucle courante dans la case memoire qui a l'indice stocké dans rsi
+	    cout <<"\tmovq (%rsi),%rax"<<endl;
 	    cout << "\tcmpq %rax,"<<var<<endl;
-        cout << "\tja ENDFOR"<<number<<endl;
+        cout << "\tje ENDFOR"<<number<<endl;
 		if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
             Error("'DO' attendus");
 	    }else{
 		    current=(TOKEN) lexer->yylex();
 		    Statement();
-			cout << "\tincq"<<var<<"\t#ADD"<<endl;
+		    if(typeDeBoucleFor == 0){
+			   cout << "\tincq "<<var<<"\t#ADD"<<endl;
+			}else{
+				cout << "\tsubq $1,"<<var<<"\t#ADD"<<endl;
+			}
 			cout<<"\tjmp FOR"<<number<<endl;
 			cout <<"ENDFOR"<<number<<":"<<endl;
+			cout <<"\tsubq $1,%rsi"<<endl;
     	}
 	}
 }
@@ -457,6 +475,16 @@ void BlockStatement(void){
 		current=(TOKEN) lexer->yylex();
 	}
     cout <<"END"<<number<<":"<<endl;
+}
+
+void Display(void){
+  current=(TOKEN) lexer->yylex();
+  Expression();
+  cout <<"\tpop %rdx # The value to be displayed"<<endl; //la valeur a affiché
+  cout <<"\tmovq $FormatString1, %rsi "<<endl; //la methode d'affichage d'un integer
+  cout <<"\tmovl $1, %edi"<<endl;
+  cout <<"\tmovl $0, %eax"<<endl;
+  cout <<"\tcall __printf_chk@PLT"<<endl; //l'appel du print 
 }
 
 // StatementPart := Statement {";" Statement} "."

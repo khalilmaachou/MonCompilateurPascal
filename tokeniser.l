@@ -29,7 +29,7 @@ addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
-loop    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN")
+loop    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"DOWN TO"|"DISPLAY")
 %%
 
 {addop}		return ADDOP;
