@@ -419,31 +419,23 @@ void ForStatement(void){
 	int number = TagNumber ;
 	string var = lexer->YYText();
 	AssignementStatement();
-	cout << "\tpush "<<var<<endl;
-	cout << "\tpop %rcx"<<endl;
-
 	if(strcmp(lexer->YYText(),"TO")!=0){ //si mot clef 'TO' n'existe pas
        Error("'TO' attendus");
 	}else{
 		current=(TOKEN) lexer->yylex();
 		string borne = lexer->YYText();
 		TOKEN c = current;
-		cout <<"FOR"<<number<<":"<<endl;
-		if(c == NUMBER){
-            cout << "\tcmpq %rcx,$"<<borne<<endl;		
-		}else{
-            cout << "\tcmpq %rcx,"<<borne<<endl;
-		}
 		Expression();
-	    cout << "\tja ENDFOR"<<number<<endl;
+		cout << "\tpop %rax"<<endl; //stocké l'expression dans rax
+	    cout <<"FOR"<<number<<":"<<endl;
+	    cout << "\tcmpq %rax,"<<var<<endl;
+        cout << "\tja ENDFOR"<<number<<endl;
 		if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
             Error("'DO' attendus");
 	    }else{
 		    current=(TOKEN) lexer->yylex();
-	        cout << "\tpush %rcx"<<endl; //stocké la valeur de rcx dans le compteur pour permet d'utiliser cx plusieur fois 
 		    Statement();
-			cout << "\tpop %rcx"<<endl;
-			cout << "\tincq	%rcx\t# ADD"<<endl;
+			cout << "\tincq"<<var<<"\t#ADD"<<endl;
 			cout<<"\tjmp FOR"<<number<<endl;
 			cout <<"ENDFOR"<<number<<":"<<endl;
     	}
