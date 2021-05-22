@@ -18,33 +18,37 @@ using namespace std;
 %option noyywrap
 %option c++
 %option yylineno
-
+charconst	\'\\?.\'
 stringconst  \"[^\n"]+\"
 ws      [ \t\n\r]+
 alpha   [A-Za-z]
 digit   [0-9]
+flotant {digit}+(\.{digit}+)
 number  {digit}+
 id	{alpha}({alpha}|{digit})*
 addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
-loop    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN")
+keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"VAR"|"DOUBLE"|"DISPLAY")
 %%
 
 {addop}		return ADDOP;
 {mulop}		return MULOP;
 {relop}		return RELOP;
+{flotant}  return FLOTANT;
 {number}	return NUMBER;
-{loop}     return LOOP;
+{keywords}     return KEYWORDS;
 {id}		return ID;
+{charconst} return CHARCONST;
 {stringconst}	return STRINGCONST;
 "["		return RBRACKET;
 "]"		return LBRACKET;
 ","		return COMMA;
 ";"		return SEMICOLON;
 "."		return DOT;
-":="		return ASSIGN;
+":="	return ASSIGN;
+":"     return TWOPOINTS; 
 "("		return RPARENT;
 ")"		return LPARENT;
 "!"		return NOT;

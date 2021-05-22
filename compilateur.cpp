@@ -22,6 +22,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <set>
+#include <map>
 #include <FlexLexer.h>
 #include "tokeniser.h"
 #include <cstring>
@@ -31,7 +32,7 @@ using namespace std;
 enum OPREL {EQU, DIFF, INF, SUP, INFE, SUPE, WTFR};
 enum OPADD {ADD, SUB, OR, WTFA};
 enum OPMUL {MUL, DIV, MOD, AND ,WTFM};
-enum TYPE {UNSIGNED_INT,BOOLEAN};
+enum TYPE {UNSIGNED_INT,BOOLEAN,DOUBLE,CHAR};
 
 TOKEN current;				// Current token
 
@@ -42,7 +43,7 @@ FlexLexer* lexer = new yyFlexLexer; // This is the flex tokeniser
 // and lexer->YYText() returns the lexicon entry as a string
 
 	
-set<string> DeclaredVariables;
+std::map<string, TYPE> DeclaredVariables;
 unsigned long TagNumber=0;
 
 bool IsDeclared(const char *id){
@@ -76,15 +77,42 @@ void Error(string s){
 	
 		
 TYPE Identifier(void){
-	cout << "\tpush "<<lexer->YYText()<<endl;
+	TYPE type = DeclaredVariables[lexer->YYText()];
+	switch (type){
+	    case UNSIGNED_INT : 
+		    cout << "\tpush "<<lexer->YYText()<<endl;
+			break;
+		case DOUBLE : 
+		    cout << "\tfld "<<lexer->YYText()<<endl;
+			break;
+		case CHAR : 
+		    cout << "\tmovq $0,%rcx"<<endl;
+			cout << "\tmovb "<<lexer->YYText()<<",%cl"<<endl;//j'ai utiliser rcx au cas on a utiliser rax avant et on a besoin de resultat
+			cout << "\tpush %rcx"<<endl;
+			break;
+	}
 	current=(TOKEN) lexer->yylex();
 	return UNSIGNED_INT;
 }
-
+//Number := chiffre | chiffre.chiffre{chiffre}
 TYPE Number(void){
-	cout <<"\tpush $"<<atoi(lexer->YYText())<<endl;
-	current=(TOKEN) lexer->yylex();
-	return UNSIGNED_INT;
+	if(current == FLOTANT){
+       cout <<"\tfld $"<<lexer->YYText()<<endl;
+	   current=(TOKEN) lexer->yylex();
+	   return DOUBLE;
+	}else{
+	   cout <<"\tpush $"<<lexer->YYText()<<endl;
+	   current=(TOKEN) lexer->yylex();
+	   return UNSIGNED_INT;
+	}
+}
+//CharConst := alpha| rien 
+TYPE CharConst(void){
+  cout << "\tmovq $0,%rcx"<<endl;
+  cout << "\tmovb $"<<lexer->YYText()<<",%cl"<<endl;//j'ai utiliser rcx au cas on a utiliser rax avant et on a besoin de resultat
+  cout << "\tpush %rcx"<<endl;
+  current=(TOKEN) lexer->yylex();
+  return CHAR;
 }
 
 TYPE Expression(void);			// Called by Term() and calls Term()
@@ -101,13 +129,16 @@ TYPE Factor(void){
 			current=(TOKEN) lexer->yylex();
 	}
 	else 
-		if (current==NUMBER)
+		if (current==NUMBER || current == FLOTANT)
 			val = Number();
 	     	else
 				if(current==ID)
 					val = Identifier();
 				else
-					Error("'(' ou chiffre ou lettre attendue");
+					if(current==CHARCONST)
+					    val = CharConst();
+				    else
+					   Error("'(' ou chiffre ou lettre attendue ");
 	return val ;
 }
 
@@ -145,19 +176,27 @@ TYPE Term(void){
 		cout << "\tpop %rax"<<endl;	// get second operand
 		switch(mulop){
 			case AND:
+			    if(val1 != BOOLEAN)//test si c'est un bool sinon erreur
+				    Error("expected BOOLEAN");
 				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
 				cout << "\tpush %rax\t# AND"<<endl;	// store result
 				break;
 			case MUL:
+			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+				    Error("expected type numerique");
 				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
 				cout << "\tpush %rax\t# MUL"<<endl;	// store result
 				break;
 			case DIV:
+			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+				    Error("expected type numerique");
 				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
 				cout << "\tdiv %rbx"<<endl;			// quotient goes to %rax
 				cout << "\tpush %rax\t# DIV"<<endl;		// store result
 				break;
 			case MOD:
+			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+				    Error("expected type numerique");
 				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
 				cout << "\tdiv %rbx"<<endl;			// remainder goes to %rdx
 				cout << "\tpush %rdx\t# MOD"<<endl;		// store result
@@ -217,29 +256,65 @@ TYPE SimpleExpression(void){
 return val1;
 }
 
-// DeclarationPart := "[" Ident {"," Ident} "]"
-void DeclarationPart(void){
-	if(current!=RBRACKET)
-		Error("caractère '[' attendu");
-	cout << "\t.data"<<endl;
-	cout << "\t.align 8"<<endl;
-	
-	current=(TOKEN) lexer->yylex();
+// VarDeclaration := Ident {"," Ident} ":" Type
+
+void VarDeclaration(void){
+	set<string> id; 
+	TYPE var_type;
 	if(current!=ID)
 		Error("Un identificater était attendu");
-	cout << lexer->YYText() << ":\t.quad 0"<<endl;
-	DeclaredVariables.insert(lexer->YYText());
+	id.insert(lexer->YYText());
 	current=(TOKEN) lexer->yylex();
 	while(current==COMMA){
 		current=(TOKEN) lexer->yylex();
-		if(current!=ID)
+		if(current!=ID) //s'il existe un variable
 			Error("Un identificateur était attendu");
-		cout << lexer->YYText() << ":\t.quad 0"<<endl;
-		DeclaredVariables.insert(lexer->YYText());
+		id.insert(lexer->YYText());
 		current=(TOKEN) lexer->yylex();
 	}
-	if(current!=LBRACKET)
-		Error("caractère ']' attendu");
+	if(current!=TWOPOINTS)
+		Error("caractère ':' attendu");
+	current=(TOKEN) lexer->yylex();
+	// teste des types //
+	
+	if(strcmp(lexer->YYText(),"BOOLEAN")==0)
+		var_type = BOOLEAN;
+	else if(strcmp(lexer->YYText(),"DOUBLE")==0)
+		var_type = DOUBLE;
+	else if(strcmp(lexer->YYText(),"INTEGER")==0)
+		var_type = UNSIGNED_INT;
+	else if(strcmp(lexer->YYText(),"CHAR")==0)
+		var_type = CHAR;
+	else Error("UNDEFINED TYPE"); 
+
+	current=(TOKEN) lexer->yylex();
+	//sauvegarde des variable //
+	set<string>::iterator it = id.begin();
+	for(it;it != id.end();++it){
+		if(var_type == DOUBLE)
+			cout << *it << ":\t.double 0.0"<<endl;
+		else if(var_type == UNSIGNED_INT)
+			cout << *it << ":\t.quad 0"<<endl;
+		else if(var_type == CHAR)
+			cout << *it << ":\t.byte 0"<<endl;
+       DeclaredVariables[*it] = var_type;
+	}
+}
+// VarDeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
+void VarDeclarationPart(void){
+	if(current!=KEYWORDS)
+		Error("key word 'VAR' attendue ");
+	cout << "\t.data"<<endl;
+	cout << "\t.align 8"<<endl;
+	current=(TOKEN) lexer->yylex();
+	VarDeclaration();
+	while(current == SEMICOLON){
+       current=(TOKEN) lexer->yylex();
+	   VarDeclaration();
+	}
+	if(current != DOT){
+		Error("'.' expected to end declaration");
+	}
 	current=(TOKEN) lexer->yylex();
 }
 
@@ -320,14 +395,15 @@ void AssignementStatement(void){
 		cerr << "Erreur : Variable '"<<lexer->YYText()<<"' non déclarée"<<endl;
 		exit(-1);
 	}
+	TYPE type1 = DeclaredVariables[lexer->YYText()];
 	variable=lexer->YYText();
 	current=(TOKEN) lexer->yylex();
 	if(current!=ASSIGN)
 		Error("caractères ':=' attendus");
 	current=(TOKEN) lexer->yylex();
-	TYPE val = Expression();
-	if (val != UNSIGNED_INT){
-		Error("Expected INTEGER");
+	TYPE type2 = Expression();
+	if(type1 != type2){//teste si expression a le meme type de variable
+		Error("expected same type");
 	}
 	cout << "\tpop "<<variable<<endl;
 }
@@ -336,9 +412,10 @@ void IfStatement(void);
 void WhileStatement(void);
 void ForStatement(void);
 void BlockStatement(void);
+void Display(void);
 //Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
 void Statement(void){
-	if(current==LOOP){
+	if(current==KEYWORDS){
 	   if(strcmp(lexer->YYText(),"IF")==0){ //si c'est un block "IF"
               IfStatement();
 	   }else{
@@ -351,7 +428,11 @@ void Statement(void){
 	                  if(strcmp(lexer->YYText(),"BEGIN")==0){ //si c'est un block "BLOCK"
                           BlockStatement();
 	                  }else{
-	                      Error("previous 'IF' OR 'BEGIN' attendus");
+	                      if(strcmp(lexer->YYText(),"DISPLAY")==0){ //si c'est un block "DISPLAY"
+                             Display();
+	                      }else{
+	                         Error("previous 'Boucle' or 'Display' attendus");
+	                      }
 	                  }
 	              }
 	        }
@@ -399,9 +480,9 @@ void WhileStatement(void){
         Error("Expected Boolean type expression");
 	}
 	cout << "\tpop %rax"<<endl;
-	cout << "\tcmpq %rax,$0"<<endl;
+	cout << "\tcmpq $0,%rax"<<endl;
 	cout << "\tje ENDWHILE"<<number<<endl;
-	if(current==LOOP){
+	if(current==KEYWORDS){
 	   if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
           Error("'DO' attendus");
 	   }else{
@@ -419,25 +500,37 @@ void ForStatement(void){
 	int number = TagNumber ;
 	string var = lexer->YYText();
 	AssignementStatement();
-	if(strcmp(lexer->YYText(),"TO")!=0){ //si mot clef 'TO' n'existe pas
+	int typeDeBoucleFor = 0; //savoir si cest un "DOWN TO" ou c'est un "TO"
+	if(strcmp(lexer->YYText(),"TO")!=0 && strcmp(lexer->YYText(),"DOWN TO")!=0){ //si mot clef 'TO' et le mot clef 'DOWN TO' n'existe pas
        Error("'TO' attendus");
 	}else{
+		if(strcmp(lexer->YYText(),"DOWN TO") == 0){ //si c'est un "DOWN TO" ON CHANGE LA VALEUR DE LA VARIABLE
+		   typeDeBoucleFor = 1;
+		}
 		current=(TOKEN) lexer->yylex();
 		string borne = lexer->YYText();
 		TOKEN c = current;
 		Expression();
 		cout << "\tpop %rax"<<endl; //stocké l'expression dans rax
-	    cout <<"FOR"<<number<<":"<<endl;
+		cout << "\tincq %rsi"<<endl; //incrementer l'indice pour stocké la limite  de la boucle courante
+		cout << "\tmovq %rax,(%rsi)"<<endl;
+	    cout <<"FOR"<<number<<":"<<endl; //stocké la limite de la boucle courante dans la case memoire qui a l'indice stocké dans rsi
+	    cout <<"\tmovq (%rsi),%rax"<<endl;
 	    cout << "\tcmpq %rax,"<<var<<endl;
-        cout << "\tja ENDFOR"<<number<<endl;
+        cout << "\tje ENDFOR"<<number<<endl;
 		if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
             Error("'DO' attendus");
 	    }else{
 		    current=(TOKEN) lexer->yylex();
 		    Statement();
-			cout << "\tincq"<<var<<"\t#ADD"<<endl;
+		    if(typeDeBoucleFor == 0){
+			   cout << "\tincq "<<var<<"\t#ADD"<<endl;
+			}else{
+				cout << "\tsubq $1,"<<var<<"\t#ADD"<<endl;
+			}
 			cout<<"\tjmp FOR"<<number<<endl;
 			cout <<"ENDFOR"<<number<<":"<<endl;
+			cout <<"\tsubq $1,%rsi"<<endl;
     	}
 	}
 }
@@ -459,6 +552,17 @@ void BlockStatement(void){
     cout <<"END"<<number<<":"<<endl;
 }
 
+void Display(void){
+  current=(TOKEN) lexer->yylex();
+  Expression();
+  cout <<"\tpop %rdx # The value to be displayed"<<endl; //la valeur a affiché
+  cout <<"\tmovq $FormatString1, %rsi "<<endl; //la methode d'affichage d'un integer
+  cout <<"\tmovl $1, %edi"<<endl;
+  cout <<"\tmovl $0, %eax"<<endl;
+  cout <<"\tcall __printf_chk@PLT"<<endl; //l'appel du print 
+}
+
+
 // StatementPart := Statement {";" Statement} "."
 void StatementPart(void){
 	cout << "\t.text\t\t# The following lines contain the program"<<endl;
@@ -475,10 +579,10 @@ void StatementPart(void){
 	current=(TOKEN) lexer->yylex();
 }
 
-// Program := [DeclarationPart] StatementPart
+// Program := [VarDeclarationPart] StatementPart
 void Program(void){
-	if(current==RBRACKET)
-		DeclarationPart();
+	if(current==KEYWORDS)
+		VarDeclarationPart();
 	StatementPart();	
 }
 
