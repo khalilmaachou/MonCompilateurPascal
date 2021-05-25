@@ -30,7 +30,7 @@ addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
-keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"VAR"|"DOUBLE"|"DISPLAY"|"case"|"of")
+keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"VAR"|"DOUBLE"|"DISPLAY"|"case"|"of"|"DOWN TO"|"REPEAT"|"UNTIL"|"UNTIL NOT")
 %%
 
 {addop}		return ADDOP;

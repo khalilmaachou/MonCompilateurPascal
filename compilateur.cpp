@@ -496,9 +496,8 @@ void Statement(void){
 	                      }else{
 	                         if(strcmp(lexer->YYText(),"case")==0){ //si c'est un block "DISPLAY"
                                 SwitchStatement();
-								DoWhileStatement();
 	                         }else{
-	                            if(strcmp(lexer->YYText(),"DO")==0){ //si c'est un block "DISPLAY"
+	                            if(strcmp(lexer->YYText(),"UNTIL")==0){ //si c'est un block "DISPLAY"
 								   DoWhileStatement();
 	                            }else{
 	                               Error("previous 'Boucle' or 'Display' attendus");
@@ -565,24 +564,34 @@ void WhileStatement(void){
 	   }
 	}
 }
-//DoWhileStatement := "DO" Statement "WHILE" Expression
+//DoWhileStatement := "REPEAT" Statement "UNTIL" Expression || "REPEAT" Statement "UNTIL NOT" Expression
 void DoWhileStatement(void){
 	int number = TagNumber + 1;
-	cout <<"DO"<<number<<":"<<endl;
+	cout <<"REPEAT"<<number<<":"<<endl;
 	current=(TOKEN) lexer->yylex();
 	Statement();
-	if(strcmp(lexer->YYText(),"WHILE")!=0){
+	if(strcmp(lexer->YYText(),"UNTIL")!=0 && strcmp(lexer->YYText(),"UNTIL NOT")!=0){
 		Error("expected WHILE ");
 	}
-	current=(TOKEN) lexer->yylex();
-	TYPE type = Expression();
-	if(type != BOOLEAN){
-		Error("expected boolean type expression after while");
+	if(strcmp(lexer->YYText(),"UNTIL")==0){ //test si c'est un UNTIL ou un UNTIL NOT
+	   current=(TOKEN) lexer->yylex();
+	   TYPE type = Expression();
+	   if(type != BOOLEAN){
+	       Error("expected boolean type expression after while");
+	    }
+	   cout << "\tpop %rax"<<endl;
+	   cout << "\tcmpq $0,%rax"<<endl;
+	   cout << "\tje REPEAT"<<number<<endl; //si c'est UNTIL on repete tant que elle est fausse 
+	}else{
+		current=(TOKEN) lexer->yylex();
+		TYPE type = Expression();
+		if(type != BOOLEAN){
+			Error("expected boolean type expression after while");
+		}
+		cout << "\tpop %rax"<<endl;
+		cout << "\tcmpq $0,%rax"<<endl;
+		cout << "\tjne DO"<<number<<endl;//si c'est UNTIL NOT on repete tant que elle est Vrai 
 	}
-	cout << "\tpop %rax"<<endl;
-	cout << "\tcmpq $0,%rax"<<endl;
-	cout << "\tjne DO"<<number<<endl;
-
 
 }
 //ForStatement := "FOR" AssignementStatement "To" Expression "DO" Statement
@@ -644,7 +653,7 @@ switch (current){
 			}
 			cout << "\tpop %rax"<<endl;
 			cout << "\tcmpq %rax,"<<val<<endl;
-			cout <<"\tje Equal"<<i+1<<endl;
+			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case CHARCONST:
             type2 = CharConst();
@@ -681,7 +690,7 @@ current=(TOKEN) lexer->yylex();
 			}
 			cout << "\tpop %rax"<<endl;
 			cout << "\tcmpq %rax,"<<val<<endl;
-			cout <<"\tje Equal"<<i+1<<endl;
+			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case CHARCONST:
             type2 = CharConst();
@@ -846,6 +855,12 @@ void Program(void){
 int main(void){	// First version : Source code on standard input and assembly code on standard output
 	// Header for gcc assembler / linker
 	cout << "\t\t\t# This code was produced by the CERI Compiler"<<endl;
+	cout << "FormatString1:\t.string \"%llu\"\t# used by printf to display 64-bit unsigned integers"<<endl; 
+	cout << "FormatString2:\t.string \"%lf\"\t# used by printf to display 64-bit floating point numbers"<<endl; 
+	cout << "FormatString3:\t.string \"%c\"\t# used by printf to display a 8-bit single character"<<endl; 
+	cout << "TrueString:\t.string \"TRUE\"\t# used by printf to display the boolean value TRUE"<<endl; 
+	cout << "FalseString:\t.string \"FALSE\"\t# used by printf to display the boolean value FALSE"<<endl; 
+
 	// Let's proceed to the analysis and code production
 	current=(TOKEN) lexer->yylex();
 	Program();
