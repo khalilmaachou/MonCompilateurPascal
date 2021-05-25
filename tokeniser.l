@@ -30,7 +30,7 @@ addop	(\+|\-|\|\|)
 mulop	(\*|\/|%|\&\&)
 relop	(\<|\>|"=="|\<=|\>=|!=)
 unknown [^\"A-Za-z0-9 \n\r\t\(\)\<\>\=\!\%\&\|\}\-\;\.]+
-keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"VAR"|"DOUBLE"|"DISPLAY")
+keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLEAN"|"VAR"|"DOUBLE"|"DISPLAY"|"case"|"of")
 %%
 
 {addop}		return ADDOP;
@@ -39,12 +39,12 @@ keywords    ("IF"|"WHILE"|"FOR"|"BEGIN"|"ELSE"|"DO"|"THEN"|"TO"|"INTEGER"|"BOOLE
 {flotant}  return FLOTANT;
 {number}	return NUMBER;
 {keywords}     return KEYWORDS;
-{id}		return ID;
+","		return COMMA;
 {charconst} return CHARCONST;
+{id}		return ID;
 {stringconst}	return STRINGCONST;
 "["		return RBRACKET;
 "]"		return LBRACKET;
-","		return COMMA;
 ";"		return SEMICOLON;
 "."		return DOT;
 ":="	return ASSIGN;

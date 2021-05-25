@@ -12,17 +12,45 @@ i:	.byte 0
 	.globl main	# The main function must be visible from outside
 main:			# The main function body :
 	movq %rsp, %rbp	# Save the position of the stack's top
-	movq $0,%rcx
-	movb $'a',%cl
-	push %rcx
-	pop h
-	movq $0,%rcx
-	movb h,%cl
-	push %rcx
-	pop %rdx # The value to be displayed
-	movq $FormatString1, %rsi 
-	movl $1, %edi
-	movl $0, %eax
-	call __printf_chk@PLT
+	subq $8,%rsp			# allocate 8 bytes on stack's top
+	movl	$0, (%rsp)	# Conversion of 1 (32 bit high part)
+	movl	$1072693248, 4(%rsp)	# Conversion of 1 (32 bit low part)
+	pop e
+	push $3
+	pop a
+DO1:
+WHILE1:
+	push a
+	push c
+	pop %rax
+	pop %rbx
+	cmpq %rax, %rbx
+	jb Vrai1	# If below
+	push $0		# False
+	jmp Suite1
+Vrai1:	push $0xFFFFFFFFFFFFFFFF		# True
+Suite1:
+	pop %rax
+	cmpq $0,%rax
+	je ENDWHILE1
+	push $2
+	pop b
+	jmp WHILE1
+ENDWHILE1:
+	push a
+	push b
+	pop %rax
+	pop %rbx
+	cmpq %rax, %rbx
+	jb Vrai2	# If below
+	push $0		# False
+	jmp Suite2
+Vrai2:	push $0xFFFFFFFFFFFFFFFF		# True
+Suite2:
+	pop %rax
+	cmpq $0,%rax
+	jne DO1
+	push $2
+	pop a
 	movq %rbp, %rsp		# Restore the position of the stack's top
 	ret			# Return from main function

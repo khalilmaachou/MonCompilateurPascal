@@ -44,6 +44,7 @@ FlexLexer* lexer = new yyFlexLexer; // This is the flex tokeniser
 
 	
 std::map<string, TYPE> DeclaredVariables;
+set<string>SwitchCases;
 unsigned long TagNumber=0;
 
 bool IsDeclared(const char *id){
@@ -77,27 +78,26 @@ void Error(string s){
 	
 		
 TYPE Identifier(void){
-	TYPE type = DeclaredVariables[lexer->YYText()];
-	switch (type){
-	    case UNSIGNED_INT : 
-		    cout << "\tpush "<<lexer->YYText()<<endl;
-			break;
-		case DOUBLE : 
-		    cout << "\tfld "<<lexer->YYText()<<endl;
-			break;
-		case CHAR : 
-		    cout << "\tmovq $0,%rcx"<<endl;
-			cout << "\tmovb "<<lexer->YYText()<<",%cl"<<endl;//j'ai utiliser rcx au cas on a utiliser rax avant et on a besoin de resultat
-			cout << "\tpush %rcx"<<endl;
-			break;
+	TYPE type;
+	if(!IsDeclared(lexer->YYText())){
+		cerr << "Erreur : Variable '"<<lexer->YYText()<<"' non déclarée"<<endl;
+		exit(-1);
 	}
+	type=DeclaredVariables[lexer->YYText()];
+	cout << "\tpush "<<lexer->YYText()<<endl;
 	current=(TOKEN) lexer->yylex();
-	return UNSIGNED_INT;
+	return type;
 }
 //Number := chiffre | chiffre.chiffre{chiffre}
 TYPE Number(void){
 	if(current == FLOTANT){
-       cout <<"\tfld $"<<lexer->YYText()<<endl;
+	   double d = atof(lexer->YYText());
+	   unsigned int *i ;
+	   i = (unsigned int *) &d;
+       //transférer des flottants à la pile générale//
+	   cout <<"\tsubq $8,%rsp\t\t\t# allocate 8 bytes on stack's top"<<endl;
+	   cout <<"\tmovl	$"<<*i<<", (%rsp)\t# Conversion of "<<d<<" (32 bit high part)"<<endl;
+	   cout <<"\tmovl	$"<<*(i+1)<<", 4(%rsp)\t# Conversion of "<<d<<" (32 bit low part)"<<endl;
 	   current=(TOKEN) lexer->yylex();
 	   return DOUBLE;
 	}else{
@@ -172,31 +172,53 @@ TYPE Term(void){
 		{
 			Error("expected same type of factor");
 		}
-		cout << "\tpop %rbx"<<endl;	// get first operand
-		cout << "\tpop %rax"<<endl;	// get second operand
 		switch(mulop){
 			case AND:
 			    if(val1 != BOOLEAN)//test si c'est un bool sinon erreur
 				    Error("expected BOOLEAN");
-				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
+				cout << "\tpop %rbx"<<endl;	// get first operand
+				cout << "\tpop %rax"<<endl;	// get second operand
+				cout << "\tandq	%rbx"<<endl;	// a * b -> %rdx:%rax
 				cout << "\tpush %rax\t# AND"<<endl;	// store result
 				break;
 			case MUL:
-			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
 				    Error("expected type numerique");
-				cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
-				cout << "\tpush %rax\t# MUL"<<endl;	// store result
+				if(val1 == UNSIGNED_INT){
+					cout << "\tpop %rbx"<<endl;	// get first operand
+				    cout << "\tpop %rax"<<endl;	// get second operand
+					cout << "\tmulq	%rbx"<<endl;	// a * b -> %rdx:%rax
+					cout << "\tpush %rax\t# MUL"<<endl;	// store result
+				}else{
+					cout<<"\tfldl	8(%rsp)\t"<<endl;
+					cout<<"\tfldl	(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+					cout<<"\tfmulp	%st(0),%st(1)\t# %st(0) <- op1 + op2 ; %st(1)=null"<<endl;
+					cout<<"\tfstpl 8(%rsp)"<<endl;
+					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl; 
+				}
 				break;
 			case DIV:
-			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
 				    Error("expected type numerique");
-				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
-				cout << "\tdiv %rbx"<<endl;			// quotient goes to %rax
-				cout << "\tpush %rax\t# DIV"<<endl;		// store result
+				if(val1 == UNSIGNED_INT){
+					cout << "\tpop %rbx"<<endl;	// get first operand
+				    cout << "\tpop %rax"<<endl;	// get second operand
+					cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
+					cout << "\tdiv %rbx"<<endl;			// quotient goes to %rax
+					cout << "\tpush %rax\t# DIV"<<endl;		// store result
+				}else{
+                    cout<<"\tfldl	(%rsp)\t"<<endl;
+					cout<<"\tfldl	8(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+					cout<<"\tfdivp	%st(0),%st(1)\t# %st(0) <- op1 + op2 ; %st(1)=null"<<endl;
+					cout<<"\tfstpl 8(%rsp)"<<endl;
+					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl; 
+				}	  
 				break;
 			case MOD:
-			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool sinon erreur
-				    Error("expected type numerique");
+			    if(val1 != UNSIGNED_INT)//test si c'est un bool sinon erreur
+				    Error("expected type Integer");
+				cout << "\tpop %rbx"<<endl;	// get first operand
+				cout << "\tpop %rax"<<endl;	// get second operand
 				cout << "\tmovq $0, %rdx"<<endl; 	// Higher part of numerator  
 				cout << "\tdiv %rbx"<<endl;			// remainder goes to %rdx
 				cout << "\tpush %rdx\t# MOD"<<endl;		// store result
@@ -225,35 +247,66 @@ OPADD AdditiveOperator(void){
 // SimpleExpression := Term {AdditiveOperator Term}
 TYPE SimpleExpression(void){
 	OPADD adop;
-	TYPE val1;
-	TYPE val2;
-	val1 = Term();
+	TYPE type1;
+	TYPE type2;
+	type1 = Term();
 	while(current==ADDOP){
 		adop=AdditiveOperator();		// Save operator in local variable
-		val2 = Term();
-		if(val1 != val2)
+		type2 = Term();
+		if(type1 != type2)
 		{
 			Error("expected same type of term");
 		}
-		cout << "\tpop %rbx"<<endl;	// get first operand
-		cout << "\tpop %rax"<<endl;	// get second operand
 		switch(adop){
 			case OR:
-				cout << "\taddq	%rbx, %rax\t# OR"<<endl;// operand1 OR operand2
-				break;			
+				if(type2!=BOOLEAN)
+					Error("opérande non booléenne pour l'opérateur OR");
+				cout << "\tpop %rbx"<<endl;	// get first operand
+				cout << "\tpop %rax"<<endl;	// get second operand
+				cout << "\torq	%rbx, %rax\t# OR"<<endl;// operand1 OR operand2
+				cout << "\tpush %rax"<<endl;			// store result
+				break;				
 			case ADD:
-				cout << "\taddq	%rbx, %rax\t# ADD"<<endl;	// add both operands
+				if(type2!=UNSIGNED_INT && type2!=DOUBLE)
+					Error("opérande non numérique pour l'addition");
+				if(type2==UNSIGNED_INT){
+					cout << "\tpop %rbx"<<endl;	// get first operand
+					cout << "\tpop %rax"<<endl;	// get second operand
+					cout << "\taddq	%rbx, %rax\t# ADD"<<endl;	// add both operands
+					cout << "\tpush %rax"<<endl;			// store result
+				}
+				else{
+					cout<<"\tfldl	8(%rsp)\t"<<endl;
+					cout<<"\tfldl	(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+					cout<<"\tfaddp	%st(0),%st(1)\t# %st(0) <- op1 + op2 ; %st(1)=null"<<endl;
+					cout<<"\tfstpl 8(%rsp)"<<endl;
+					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl; 
+				}
 				break;			
 			case SUB:	
-				cout << "\tsubq	%rbx, %rax\t# SUB"<<endl;	// substract both operands
-				break;
+				if(type2!=UNSIGNED_INT&&type2!=DOUBLE)
+					Error("opérande non numérique pour la soustraction");
+				if(type2==UNSIGNED_INT){
+					cout << "\tpop %rbx"<<endl;	// get first operand
+					cout << "\tpop %rax"<<endl;	// get second operand
+					cout << "\tsubq	%rbx, %rax\t# ADD"<<endl;	// add both operands
+					cout << "\tpush %rax"<<endl;			// store result
+				}
+				else{
+					cout<<"\tfldl	(%rsp)\t"<<endl;
+					cout<<"\tfldl	8(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+					cout<<"\tfsubp	%st(0),%st(1)\t# %st(0) <- op1 - op2 ; %st(1)=null"<<endl;
+					cout<<"\tfstpl 8(%rsp)"<<endl;
+					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl; 
+				}
+				break;	
 			default:
 				Error("opérateur additif inconnu");
 		}
 		cout << "\tpush %rax"<<endl;			// store result
 		
 	}
-return val1;
+return type1;
 }
 
 // VarDeclaration := Ident {"," Ident} ":" Type
@@ -341,21 +394,29 @@ OPREL RelationalOperator(void){
 // Expression := SimpleExpression [RelationalOperator SimpleExpression]
 TYPE Expression(void){
 	OPREL oprel;
-	TYPE val1;
-	TYPE val2;
-	val1 = SimpleExpression();
+	TYPE type1;
+	TYPE type2;
+	type1 = SimpleExpression();
 	if(current==RELOP){
 		oprel=RelationalOperator();
-		val2 = SimpleExpression();
-		if(val1 != val2)
+		type2 = SimpleExpression();
+		if(type1 != type2)
 		{
-			cout<<val1<<endl;
 			Error("expected same type");
 		}
-		val1 = BOOLEAN;
-		cout << "\tpop %rax"<<endl;
-		cout << "\tpop %rbx"<<endl;
-		cout << "\tcmpq %rax, %rbx"<<endl;
+		if(type1!=DOUBLE){
+			cout << "\tpop %rax"<<endl;
+			cout << "\tpop %rbx"<<endl;
+			cout << "\tcmpq %rax, %rbx"<<endl;
+		}
+		else{
+			cout<<"\tfldl	(%rsp)\t"<<endl;
+			cout<<"\tfldl	8(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+			cout<<"\t addq $16, %rsp\t# 2x pop nothing"<<endl;
+			cout<<"\tfcomip %st(1)\t\t# compare op1 and op2 -> %RFLAGS and pop"<<endl;
+			cout<<"\tfaddp %st(1)\t# pop nothing"<<endl;
+		}
+		type1 = BOOLEAN;
 		switch(oprel){
 			case EQU:
 				cout << "\tje Vrai"<<++TagNumber<<"\t# If equal"<<endl;
@@ -383,7 +444,7 @@ TYPE Expression(void){
 		cout << "Vrai"<<TagNumber<<":\tpush $0xFFFFFFFFFFFFFFFF\t\t# True"<<endl;	
 		cout << "Suite"<<TagNumber<<":"<<endl;
 	}
-	return val1;
+	return type1;
 }
 
 // AssignementStatement := Identifier ":=" Expression
@@ -413,6 +474,8 @@ void WhileStatement(void);
 void ForStatement(void);
 void BlockStatement(void);
 void Display(void);
+void SwitchStatement(void);
+void DoWhileStatement(void);
 //Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement
 void Statement(void){
 	if(current==KEYWORDS){
@@ -431,7 +494,16 @@ void Statement(void){
 	                      if(strcmp(lexer->YYText(),"DISPLAY")==0){ //si c'est un block "DISPLAY"
                              Display();
 	                      }else{
-	                         Error("previous 'Boucle' or 'Display' attendus");
+	                         if(strcmp(lexer->YYText(),"case")==0){ //si c'est un block "DISPLAY"
+                                SwitchStatement();
+								DoWhileStatement();
+	                         }else{
+	                            if(strcmp(lexer->YYText(),"DO")==0){ //si c'est un block "DISPLAY"
+								   DoWhileStatement();
+	                            }else{
+	                               Error("previous 'Boucle' or 'Display' attendus");
+	                            } 
+	                         }
 	                      }
 	                  }
 	              }
@@ -493,6 +565,26 @@ void WhileStatement(void){
 	   }
 	}
 }
+//DoWhileStatement := "DO" Statement "WHILE" Expression
+void DoWhileStatement(void){
+	int number = TagNumber + 1;
+	cout <<"DO"<<number<<":"<<endl;
+	current=(TOKEN) lexer->yylex();
+	Statement();
+	if(strcmp(lexer->YYText(),"WHILE")!=0){
+		Error("expected WHILE ");
+	}
+	current=(TOKEN) lexer->yylex();
+	TYPE type = Expression();
+	if(type != BOOLEAN){
+		Error("expected boolean type expression after while");
+	}
+	cout << "\tpop %rax"<<endl;
+	cout << "\tcmpq $0,%rax"<<endl;
+	cout << "\tjne DO"<<number<<endl;
+
+
+}
 //ForStatement := "FOR" AssignementStatement "To" Expression "DO" Statement
 void ForStatement(void){
     current=(TOKEN) lexer->yylex();
@@ -500,6 +592,9 @@ void ForStatement(void){
 	int number = TagNumber ;
 	string var = lexer->YYText();
 	AssignementStatement();
+	if(DeclaredVariables[var]!=UNSIGNED_INT){
+		Error("expected integer for the for statement");
+	}
 	int typeDeBoucleFor = 0; //savoir si cest un "DOWN TO" ou c'est un "TO"
 	if(strcmp(lexer->YYText(),"TO")!=0 && strcmp(lexer->YYText(),"DOWN TO")!=0){ //si mot clef 'TO' et le mot clef 'DOWN TO' n'existe pas
        Error("'TO' attendus");
@@ -510,7 +605,10 @@ void ForStatement(void){
 		current=(TOKEN) lexer->yylex();
 		string borne = lexer->YYText();
 		TOKEN c = current;
-		Expression();
+		TYPE type = Expression();
+		if(type != UNSIGNED_INT){
+			Error("expected INTEGER in for");
+		} 
 		cout << "\tpop %rax"<<endl; //stocké l'expression dans rax
 		cout << "\tincq %rsi"<<endl; //incrementer l'indice pour stocké la limite  de la boucle courante
 		cout << "\tmovq %rax,(%rsi)"<<endl;
@@ -534,6 +632,128 @@ void ForStatement(void){
     	}
 	}
 }
+//<case label list> ::= <constant> {, <constant> } 
+void CaseLabelList(string val,int number,int i){
+TYPE type1 = DeclaredVariables[val];
+TYPE type2;
+switch (current){
+	case NUMBER:
+            type2 = Number();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout << "\tpop %rax"<<endl;
+			cout << "\tcmpq %rax,"<<val<<endl;
+			cout <<"\tje Equal"<<i+1<<endl;
+			break;
+	case CHARCONST:
+            type2 = CharConst();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout << "\tpop %rax"<<endl;
+			cout << "\tcmpq %rax,"<<val<<endl;
+			cout <<"\tje Equal"<<i<<endl;
+			break;
+	case FLOTANT:
+            type2 = Number();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout<<"\tfldl	(%rsp)\t# case value -> %st(0)"<<endl;
+			cout<<"\tfldl	"<<val<<"\t# variable value -> %st(1)"<<endl;
+			cout<<"\t addq $8, %rsp\t#  pop nothing"<<endl;
+			cout<<"\tfcomip %st(1)\t\t# compare case and variable -> %RFLAGS and pop"<<endl;
+			cout<<"\tfaddp %st(1)\t# pop nothing"<<endl;
+			cout <<"\tje Equal"<<i<<endl;
+			break;
+	default:
+	       Error("Type non compatible with case statement");
+	     
+}
+while(current == COMMA){
+current=(TOKEN) lexer->yylex();
+ switch (current){
+	case NUMBER:
+            type2 = Number();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout << "\tpop %rax"<<endl;
+			cout << "\tcmpq %rax,"<<val<<endl;
+			cout <<"\tje Equal"<<i+1<<endl;
+			break;
+	case CHARCONST:
+            type2 = CharConst();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout << "\tpop %rax"<<endl;
+			cout << "\tcmpq %rax,"<<val<<endl;
+			cout <<"\tje Equal"<<i<<endl;
+			break;
+	case FLOTANT:
+	        
+            type2 = Number();
+			if(type1 != type2){//teste si les types sont compatibles
+				Error("Expected same type for case statement");
+			}
+			cout<<"\tfldl	(%rsp)\t# case value -> %st(0)"<<endl;
+			cout<<"\tfldl	"<<val<<"\t# variable value -> %st(1)"<<endl;
+			cout<<"\t addq $8, %rsp\t#  pop nothing"<<endl;
+			cout<<"\tfcomip %st(1)\t\t# compare case and variable -> %RFLAGS and pop"<<endl;
+			cout<<"\tfaddp %st(1)\t# pop nothing"<<endl;
+			cout <<"\tje Equal"<<i<<endl;
+			break;
+	default:
+	       Error("Type non compatible with case statement");
+	     
+}
+}
+   cout <<"\tjmp case"<<number<<i+1<<endl;
+   cout <<"Equal"<<i<<":"<<endl;
+
+}
+//<case list element> ::= <case label list> : <statement> | <empty> //
+void CaseListElement(string val,int number,int i){
+   cout <<"case"<<number<<i<<":"<<endl;
+   CaseLabelList(val,number,i);
+   if(strcmp(lexer->YYText(),":")!=0)
+        Error("expected :");
+   current=(TOKEN) lexer->yylex();
+   if(strcmp(lexer->YYText(),"end")!=0&&strcmp(lexer->YYText(),";")!=0)
+        Statement();
+   cout <<"\tjmp ENDSWITCH"<<number<<endl;
+} 
+//<case statement> ::= case <identifier> of <case list element> {; <case list element> } end 
+void SwitchStatement(void){
+	current=(TOKEN) lexer->yylex();
+	TagNumber++;
+	int number = TagNumber ;
+	TYPE type1;
+	TYPE type2;
+	int i=0;
+	string variable = lexer->YYText();
+	Identifier();
+	cout<<"SWITCH"<<number<<":"<<endl;
+	if(strcmp(lexer->YYText(),"of")!=0){
+		Error("Expected 'of'");
+	}
+	current=(TOKEN) lexer->yylex();
+	CaseListElement(variable,number,i);
+	i++;
+	while(current == SEMICOLON){
+		current=(TOKEN) lexer->yylex();
+	    CaseListElement(variable,number,i);
+		i++;
+	}
+	if(strcmp(lexer->YYText(),"end")!=0){
+		Error("Expected 'end'");
+	}
+	current=(TOKEN) lexer->yylex();
+    cout<<"case"<<number<<i<<":"<<endl;
+    cout<<"ENDSWITCH"<<number<<":"<<endl;
+}
 //BlockStatement := "BEGIN" Statement { ";" Statement } "END"
 void BlockStatement(void){
     current=(TOKEN) lexer->yylex();
@@ -554,12 +774,49 @@ void BlockStatement(void){
 
 void Display(void){
   current=(TOKEN) lexer->yylex();
-  Expression();
-  cout <<"\tpop %rdx # The value to be displayed"<<endl; //la valeur a affiché
-  cout <<"\tmovq $FormatString1, %rsi "<<endl; //la methode d'affichage d'un integer
-  cout <<"\tmovl $1, %edi"<<endl;
-  cout <<"\tmovl $0, %eax"<<endl;
-  cout <<"\tcall __printf_chk@PLT"<<endl; //l'appel du print 
+  TagNumber++;
+  int number = TagNumber ;
+  TYPE type = Expression();
+  if(type == UNSIGNED_INT){
+		cout <<"\tpop %rdx # The value to be displayed"<<endl; //la valeur a affiché
+		cout <<"\tmovq $FormatString1, %rsi "<<endl; //la methode d'affichage d'un integer
+		cout <<"\tmovl $1, %edi"<<endl;
+		cout <<"\tmovl $0, %eax"<<endl;
+		cout <<"\tcall __printf_chk@PLT"<<endl; //l'appel du print 
+  }else{
+        if(type == DOUBLE){
+		    cout << "\tmovsd	(%rsp), %xmm0\t\t# &stack top -> %xmm0"<<endl;
+			cout << "\tsubq	$16, %rsp\t\t# allocation for 3 additional doubles"<<endl;
+			cout << "\tmovsd %xmm0, 8(%rsp)"<<endl;
+			cout << "\tmovq $FormatString2, %rdi\t# \"%lf\\n\""<<endl;
+			cout << "\tmovq	$1, %rax"<<endl;
+			cout << "\tcall	printf"<<endl;
+			cout << "nop"<<endl;
+			cout << "\taddq $24, %rsp\t\t\t# pop nothing"<<endl;	
+		}else{
+			if(type == BOOLEAN){
+				cout << "\tpop %rdx\t# Zero : False, non-zero : true"<<endl;
+				cout << "\tcmpq $0, %rdx"<<endl;
+				cout << "\tje False"<<number<<endl;
+				cout << "\tmovq $TrueString, %rdi\t# \"TRUE\\n\""<<endl;
+				cout << "\tjmp Next"<<number<<endl;
+				cout << "False"<<number<<":"<<endl;
+				cout << "\tmovq $FalseString, %rdi\t# \"FALSE\\n\""<<endl;
+				cout << "Next"<<number<<":"<<endl;
+				cout << "\tcall	puts@PLT"<<endl;
+
+			}else{
+				if(type == CHAR){
+					cout<<"\tpop %rsi\t\t\t# get character in the 8 lowest bits of %si"<<endl;
+					cout << "\tmovq $FormatString3, %rdi\t# \"%c\\n\""<<endl;
+					cout << "\tmovl	$0, %eax"<<endl;
+					cout << "\tcall	printf@PLT"<<endl;
+				}else{
+                    Error("type non compatible with display");
+				}
+			}
+		}
+	}	   
 }
 
 
