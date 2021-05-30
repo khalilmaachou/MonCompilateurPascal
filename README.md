@@ -79,20 +79,34 @@ Aprés l'utilisation de l'un des methode "make" pour afficher le resultat éxecu
 
 # Grammaire utilisé :
  Program := StatementPart
+ 
  VarDeclarationPart := "VAR" VarDeclaration {";" VarDeclaration} "."
+ 
  VarDeclaration := Ident {"," Ident} ":" Type
+ 
  StatementPart := Statement {";" Statement} "."
- Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DoWhileStatement | case statement 
+ 
+ Statement := AssignementStatement | IfStatement | WhileStatement | ForStatement | BlockStatement | DoWhileStatement | 
+ case statement 
+ 
  AssignementStatement := Identifier "=" Expression
 
  Expression := SimpleExpression [RelationalOperator SimpleExpression]
+ 
  SimpleExpression := Term {AdditiveOperator Term}
+ 
  Term := Factor {MultiplicativeOperator Factor}
+ 
  Factor := Number |Identifier | "(" Expression ")"| "!" Factor
+ 
  Number := Digit{Digit} | Digit"."{Digit}
 
  AdditiveOperator := "+" | "-" | "||"
+ 
  MultiplicativeOperator := "*" | "/" | "%" | "&&"
+ 
  RelationalOperator := "==" | "!=" | "<" | ">" | "<=" | ">="  
+ 
  Digit := "0"|"1"|"2"|"3"|"4"|"5"|"6"|"7"|"8"|"9"
+ 
  Identifier := {alpha}({alpha}|{Digit})
