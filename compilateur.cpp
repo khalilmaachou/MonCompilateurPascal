@@ -106,7 +106,7 @@ TYPE Number(void){
 	   return UNSIGNED_INT;
 	}
 }
-//CharConst := alpha| rien 
+//CharConst := 'alpha'| 'rien' 
 TYPE CharConst(void){
   cout << "\tmovq $0,%rcx"<<endl;
   cout << "\tmovb $"<<lexer->YYText()<<",%cl"<<endl;//j'ai utiliser rcx au cas on a utiliser rax avant et on a besoin de resultat
@@ -176,13 +176,14 @@ TYPE Term(void){
 			case AND:
 			    if(val1 != BOOLEAN)//test si c'est un bool sinon erreur
 				    Error("expected BOOLEAN");
-				cout << "\tpop %rbx"<<endl;	// get first operand
-				cout << "\tpop %rax"<<endl;	// get second operand
-				cout << "\tandq	%rbx"<<endl;	// a * b -> %rdx:%rax
-				cout << "\tpush %rax\t# AND"<<endl;	// store result
+				cout<<"\tfldl	8(%rsp)\t"<<endl;
+				cout<<"\tfldl	(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
+				cout<<"\tfaddp	%st(0),%st(1)\t# %st(0) <- op1 + op2 ; %st(1)=null"<<endl;
+				cout<<"\tfstpl 8(%rsp)"<<endl;
+				cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl;
 				break;
 			case MUL:
-			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
+			    if(val1 != DOUBLE && val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
 				    Error("expected type numerique");
 				if(val1 == UNSIGNED_INT){
 					cout << "\tpop %rbx"<<endl;	// get first operand
@@ -198,7 +199,7 @@ TYPE Term(void){
 				}
 				break;
 			case DIV:
-			    if(val1 != DOUBLE || val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
+			    if(val1 != DOUBLE && val2 != UNSIGNED_INT)//test si c'est un bool alors erreur
 				    Error("expected type numerique");
 				if(val1 == UNSIGNED_INT){
 					cout << "\tpop %rbx"<<endl;	// get first operand
@@ -289,7 +290,7 @@ TYPE SimpleExpression(void){
 				if(type2==UNSIGNED_INT){
 					cout << "\tpop %rbx"<<endl;	// get first operand
 					cout << "\tpop %rax"<<endl;	// get second operand
-					cout << "\tsubq	%rbx, %rax\t# ADD"<<endl;	// add both operands
+					cout << "\tsubq	%rbx, %rax\t# SUB"<<endl;	// add both operands
 					cout << "\tpush %rax"<<endl;			// store result
 				}
 				else{
@@ -297,13 +298,12 @@ TYPE SimpleExpression(void){
 					cout<<"\tfldl	8(%rsp)\t# first operand -> %st(0) ; second operand -> %st(1)"<<endl;
 					cout<<"\tfsubp	%st(0),%st(1)\t# %st(0) <- op1 - op2 ; %st(1)=null"<<endl;
 					cout<<"\tfstpl 8(%rsp)"<<endl;
-					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl; 
+					cout<<"\taddq	$8, %rsp\t# result on stack's top"<<endl;  
 				}
 				break;	
 			default:
 				Error("opérateur additif inconnu");
 		}
-		cout << "\tpush %rax"<<endl;			// store result
 		
 	}
 return type1;
@@ -346,7 +346,7 @@ void VarDeclaration(void){
 	for(it;it != id.end();++it){
 		if(var_type == DOUBLE)
 			cout << *it << ":\t.double 0.0"<<endl;
-		else if(var_type == UNSIGNED_INT)
+		else if(var_type == UNSIGNED_INT ||var_type == BOOLEAN)
 			cout << *it << ":\t.quad 0"<<endl;
 		else if(var_type == CHAR)
 			cout << *it << ":\t.byte 0"<<endl;
@@ -358,6 +358,11 @@ void VarDeclarationPart(void){
 	if(current!=KEYWORDS)
 		Error("key word 'VAR' attendue ");
 	cout << "\t.data"<<endl;
+	cout << "FormatString1:\t.string \"%llu\"\t# used by printf to display 64-bit unsigned integers"<<endl; 
+	cout << "FormatString2:\t.string \"%lf\"\t# used by printf to display 64-bit floating point numbers"<<endl; 
+	cout << "FormatString3:\t.string \"%c\"\t# used by printf to display a 8-bit single character"<<endl; 
+	cout << "TrueString:\t.string \"TRUE\"\t# used by printf to display the boolean value TRUE"<<endl; 
+	cout << "FalseString:\t.string \"FALSE\"\t# used by printf to display the boolean value FALSE"<<endl; 
 	cout << "\t.align 8"<<endl;
 	current=(TOKEN) lexer->yylex();
 	VarDeclaration();
@@ -494,10 +499,10 @@ void Statement(void){
 	                      if(strcmp(lexer->YYText(),"DISPLAY")==0){ //si c'est un block "DISPLAY"
                              Display();
 	                      }else{
-	                         if(strcmp(lexer->YYText(),"case")==0){ //si c'est un block "DISPLAY"
+	                         if(strcmp(lexer->YYText(),"case")==0){ //si c'est un block "case"
                                 SwitchStatement();
 	                         }else{
-	                            if(strcmp(lexer->YYText(),"UNTIL")==0){ //si c'est un block "DISPLAY"
+	                            if(strcmp(lexer->YYText(),"DO")==0){ //si c'est un block "DISPLAY"
 								   DoWhileStatement();
 	                            }else{
 	                               Error("previous 'Boucle' or 'Display' attendus");
@@ -529,7 +534,7 @@ void IfStatement(void){
 	}else{
 		current=(TOKEN) lexer->yylex();
 		cout << "\tpop %rax"<<endl;
-		cout << "\tcmpq %rax,$0"<<endl;
+		cout << "\tcmpq $0,%rax"<<endl;
         cout << "\tje ELSE"<<number<<endl;
 		Statement();
         cout << "ELSE"<<number<<":"<<endl;
@@ -590,7 +595,7 @@ void DoWhileStatement(void){
 		}
 		cout << "\tpop %rax"<<endl;
 		cout << "\tcmpq $0,%rax"<<endl;
-		cout << "\tjne DO"<<number<<endl;//si c'est UNTIL NOT on repete tant que elle est Vrai 
+		cout << "\tjne REPEAT"<<number<<endl;//si c'est UNTIL NOT on repete tant que elle est Vrai 
 	}
 
 }
@@ -614,17 +619,14 @@ void ForStatement(void){
 		current=(TOKEN) lexer->yylex();
 		string borne = lexer->YYText();
 		TOKEN c = current;
+		cout <<"FOR"<<number<<":"<<endl; //etiquette For
 		TYPE type = Expression();
 		if(type != UNSIGNED_INT){
 			Error("expected INTEGER in for");
 		} 
-		cout << "\tpop %rax"<<endl; //stocké l'expression dans rax
-		cout << "\tincq %rsi"<<endl; //incrementer l'indice pour stocké la limite  de la boucle courante
-		cout << "\tmovq %rax,(%rsi)"<<endl;
-	    cout <<"FOR"<<number<<":"<<endl; //stocké la limite de la boucle courante dans la case memoire qui a l'indice stocké dans rsi
-	    cout <<"\tmovq (%rsi),%rax"<<endl;
-	    cout << "\tcmpq %rax,"<<var<<endl;
-        cout << "\tje ENDFOR"<<number<<endl;
+		cout << "\tpop %rax"<<endl; //stocké la limite de la boucle dans rax
+	    cout << "\tcmpq %rax,"<<var<<endl; //comparer avec variable compteur
+        cout << "\tje ENDFOR"<<number<<endl; //si egale jump fin de la boucle
 		if(strcmp(lexer->YYText(),"DO")!=0){ //si mot clef 'DO' n'existe pas
             Error("'DO' attendus");
 	    }else{
@@ -637,13 +639,11 @@ void ForStatement(void){
 			}
 			cout<<"\tjmp FOR"<<number<<endl;
 			cout <<"ENDFOR"<<number<<":"<<endl;
-			cout <<"\tsubq $1,%rsi"<<endl;
     	}
 	}
 }
 //<case label list> ::= <constant> {, <constant> } 
-void CaseLabelList(string val,int number,int i){
-TYPE type1 = DeclaredVariables[val];
+void CaseLabelList(TYPE type1,int number,int i){
 TYPE type2;
 switch (current){
 	case NUMBER:
@@ -651,8 +651,8 @@ switch (current){
 			if(type1 != type2){//teste si les types sont compatibles
 				Error("Expected same type for case statement");
 			}
-			cout << "\tpop %rax"<<endl;
-			cout << "\tcmpq %rax,"<<val<<endl;
+			cout << "\tpop %rbx"<<endl;
+			cout << "\tcmpq %rbx,%rax"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case CHARCONST:
@@ -660,8 +660,8 @@ switch (current){
 			if(type1 != type2){//teste si les types sont compatibles
 				Error("Expected same type for case statement");
 			}
-			cout << "\tpop %rax"<<endl;
-			cout << "\tcmpq %rax,"<<val<<endl;
+			cout << "\tpop %rbx"<<endl;
+			cout << "\tcmpq %rbx,%rax"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case FLOTANT:
@@ -670,8 +670,9 @@ switch (current){
 				Error("Expected same type for case statement");
 			}
 			cout<<"\tfldl	(%rsp)\t# case value -> %st(0)"<<endl;
-			cout<<"\tfldl	"<<val<<"\t# variable value -> %st(1)"<<endl;
-			cout<<"\t addq $8, %rsp\t#  pop nothing"<<endl;
+			cout<<"\tpush %rax"<<"\t#push expression"<<endl;
+			cout<<"\tfldl	(%rsp)\t# case value -> %st(1) expression value -> %st(0)"<<endl;
+			cout<<"\t addq $16, %rsp\t#  pop nothing"<<endl;
 			cout<<"\tfcomip %st(1)\t\t# compare case and variable -> %RFLAGS and pop"<<endl;
 			cout<<"\tfaddp %st(1)\t# pop nothing"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
@@ -688,8 +689,8 @@ current=(TOKEN) lexer->yylex();
 			if(type1 != type2){//teste si les types sont compatibles
 				Error("Expected same type for case statement");
 			}
-			cout << "\tpop %rax"<<endl;
-			cout << "\tcmpq %rax,"<<val<<endl;
+			cout << "\tpop %rbx"<<endl;
+			cout << "\tcmpq %rbx,%rax"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case CHARCONST:
@@ -697,8 +698,8 @@ current=(TOKEN) lexer->yylex();
 			if(type1 != type2){//teste si les types sont compatibles
 				Error("Expected same type for case statement");
 			}
-			cout << "\tpop %rax"<<endl;
-			cout << "\tcmpq %rax,"<<val<<endl;
+			cout << "\tpop %rbx"<<endl;
+			cout << "\tcmpq %rbx,%rax"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
 			break;
 	case FLOTANT:
@@ -708,8 +709,9 @@ current=(TOKEN) lexer->yylex();
 				Error("Expected same type for case statement");
 			}
 			cout<<"\tfldl	(%rsp)\t# case value -> %st(0)"<<endl;
-			cout<<"\tfldl	"<<val<<"\t# variable value -> %st(1)"<<endl;
-			cout<<"\t addq $8, %rsp\t#  pop nothing"<<endl;
+			cout<<"\tpush %rax"<<"\t#push expression"<<endl;
+			cout<<"\tfldl	(%rsp)\t# case value -> %st(1) expression value -> %st(0)"<<endl;
+			cout<<"\t addq $16, %rsp\t#  pop nothing"<<endl;
 			cout<<"\tfcomip %st(1)\t\t# compare case and variable -> %RFLAGS and pop"<<endl;
 			cout<<"\tfaddp %st(1)\t# pop nothing"<<endl;
 			cout <<"\tje Equal"<<i<<endl;
@@ -721,12 +723,11 @@ current=(TOKEN) lexer->yylex();
 }
    cout <<"\tjmp case"<<number<<i+1<<endl;
    cout <<"Equal"<<i<<":"<<endl;
-
 }
 //<case list element> ::= <case label list> : <statement> | <empty> //
-void CaseListElement(string val,int number,int i){
+void CaseListElement(TYPE type1,int number,int i){
    cout <<"case"<<number<<i<<":"<<endl;
-   CaseLabelList(val,number,i);
+   CaseLabelList(type1,number,i);
    if(strcmp(lexer->YYText(),":")!=0)
         Error("expected :");
    current=(TOKEN) lexer->yylex();
@@ -740,20 +741,19 @@ void SwitchStatement(void){
 	TagNumber++;
 	int number = TagNumber ;
 	TYPE type1;
-	TYPE type2;
 	int i=0;
-	string variable = lexer->YYText();
-	Identifier();
+	type1 = Expression();
+	cout<<"\tpop %rax"<<endl;
 	cout<<"SWITCH"<<number<<":"<<endl;
 	if(strcmp(lexer->YYText(),"of")!=0){
 		Error("Expected 'of'");
 	}
 	current=(TOKEN) lexer->yylex();
-	CaseListElement(variable,number,i);
+	CaseListElement(type1,number,i);
 	i++;
 	while(current == SEMICOLON){
 		current=(TOKEN) lexer->yylex();
-	    CaseListElement(variable,number,i);
+	    CaseListElement(type1,number,i);
 		i++;
 	}
 	if(strcmp(lexer->YYText(),"end")!=0){
@@ -854,13 +854,7 @@ void Program(void){
 
 int main(void){	// First version : Source code on standard input and assembly code on standard output
 	// Header for gcc assembler / linker
-	cout << "\t\t\t# This code was produced by the CERI Compiler"<<endl;
-	cout << "FormatString1:\t.string \"%llu\"\t# used by printf to display 64-bit unsigned integers"<<endl; 
-	cout << "FormatString2:\t.string \"%lf\"\t# used by printf to display 64-bit floating point numbers"<<endl; 
-	cout << "FormatString3:\t.string \"%c\"\t# used by printf to display a 8-bit single character"<<endl; 
-	cout << "TrueString:\t.string \"TRUE\"\t# used by printf to display the boolean value TRUE"<<endl; 
-	cout << "FalseString:\t.string \"FALSE\"\t# used by printf to display the boolean value FALSE"<<endl; 
-
+    cout << "\t\t\t# This code was produced by the CERI Compiler"<<endl;
 	// Let's proceed to the analysis and code production
 	current=(TOKEN) lexer->yylex();
 	Program();
